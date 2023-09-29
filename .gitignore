@@ -1,0 +1,12 @@
+.*
+_*
+!.gitignore
+!.revive.toml
+*.out
+*.log
+*.html
+*.prof
+bin/
+cmd/
+dev/
+makefile
