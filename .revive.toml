@@ -41,11 +41,11 @@ warningCode = 0
 [rule.confusing-results]
 [rule.constant-logical-expr]
 [rule.cyclomatic]
-    arguments = [15]
+    disabled = true
 [rule.deep-exit]
 [rule.duplicated-imports]
 [rule.flag-parameter]
-    Disabled = true
+    disabled = true
 [rule.function-result-limit]
     arguments = [4]
 [rule.import-shadowing]

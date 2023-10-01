@@ -257,233 +257,582 @@ func (cpu *CPU) tick() error {
 	//  * add 1 to cycles if page boundary is crossed
 	// ** add 1 to cycles if branch occurs on same page
 	// ** add 2 to cycles if branch occurs to different page
+	//
+	//   Op     | Mnemonic     |  Addressing  |  Processor Flags  | Cycles
+	//
+	switch fetch() /* cost 1 */ {
+	case 0x00: /* BRK          |   implied    | N- Z- C- I+ D- V- | 7 */
+		fetch()
+		pushPC()
+		php()
+		setPC(vread(0xFE))
+		setI(true)
+	case 0x20: /* JSR oper     |   absolute   | N- Z- C- I- D- V- | 6  */
+		l := fetch()
+		pushPC()
+		setPC(l, fetch())
+		cost(1)
+	case 0x40: /* RTI          |   implied    |    from stack     | 7 */
+		plp()
+		setPC(popPC())
+		cost(3)
+	case 0x60: /* RTS          |   implied    | N- Z- C- I- D- V- | 6 */
+		setPC(inc(popPC()))
+		cost(3)
+	case 0x80: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0xA0: /* LDY #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setY(fetch())
+	case 0xC0: /* CPY #oper    |  immediate   | N+ Z+ C+ I- D- V- | 2 */
+		cmp(fetch(), cpu.y)
+	case 0xE0: /* CPX #oper    |  immediate   | N+ Z+ C+ I- D- V- | 2 */
+		cmp(fetch(), cpu.x)
 
-	type operation [0x100]func()
-	op := operation{}
+	case 0x01: /* ORA (oper,X) | (indirect,X) | N+ Z+ C- I- D- V- | 6 */
+		setA(cpu.a | read(indX()))
+		cost(1)
+	case 0x21: /* AND (oper,X) | (indirect,X) | N+ Z+ C- I- D- V- | 6 */
+		setA(cpu.a & read(indX()))
+		cost(1)
+	case 0x41: /* EOR (oper,X) | (indirect,X) | N+ Z+ C- I- D- V- | 6 */
+		setA(cpu.a ^ read(indX()))
+		cost(1)
+	case 0x61: /* ADC (oper,X) | (indirect,X) | N+ Z+ C+ I- D- V+ | 6 */
+		setA(adc(read(indX())))
+		cost(1)
+	case 0x81: /* STA (oper,X) | (indirect,X) | N- Z- C- I- D- V- | 6 */
+		l, h := indX()
+		write(l, h, cpu.a)
+		cost(1)
+	case 0xA1: /* LDA (oper,X) | (indirect,X) | N+ Z+ C- I- D- V- | 6 */
+		setA(read(indX()))
+		cost(1)
+	case 0xC1: /* CMP (oper,X) | (indirect,X) | N+ Z+ C+ I- D- V- | 6 */
+		cmp(read(indX()), cpu.a)
+		cost(1)
+	case 0xE1: /* SBC (oper,X) | (indirect,X) | N+ Z+ C+ I- D- V+ | 6 */
+		setA(sbc(read(indX())))
+		cost(1)
 
-	op[0x00 /* BRK | 7 */] = func() { fetch(); pushPC(); php(); setPC(vread(0xFE)); setI(true) }
-	op[0x20 /* JSR | 6 */] = func() { l := fetch(); pushPC(); setPC(l, fetch()); cost(1) }
-	op[0x40 /* RTI | 7 */] = func() { plp(); setPC(popPC()); cost(3) }
-	op[0x60 /* RTS | 6 */] = func() { setPC(inc(popPC())); cost(3) }
-	op[0x80 /* NOP | 2 */] = func() { cost(1) }
-	op[0xA0 /* LDY | 2 */] = func() { setY(fetch()) }
-	op[0xC0 /* CPY | 2 */] = func() { cmp(fetch(), cpu.y) }
-	op[0xE0 /* CPX | 2 */] = func() { cmp(fetch(), cpu.x) }
+	case 0x02: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x22: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x42: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x62: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x82: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0xA2: /* LDX #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setX(fetch())
+	case 0xC2: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0xE2: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
+		cost(1)
 
-	op[0x01 /* ORA | 6 */] = func() { setA(cpu.a | read(indX())); cost(1) }
-	op[0x21 /* AND | 6 */] = func() { setA(cpu.a & read(indX())); cost(1) }
-	op[0x41 /* EOR | 6 */] = func() { setA(cpu.a ^ read(indX())); cost(1) }
-	op[0x61 /* ADC | 6 */] = func() { setA(adc(read(indX()))); cost(1) }
-	op[0x81 /* STA | 6 */] = func() { l, h := indX(); write(l, h, cpu.a); cost(1) }
-	op[0xA1 /* LDA | 6 */] = func() { setA(read(indX())); cost(1) }
-	op[0xC1 /* CMP | 6 */] = func() { cmp(read(indX()), cpu.a); cost(1) }
-	op[0xE1 /* SBC | 6 */] = func() { setA(sbc(read(indX()))); cost(1) }
+	case 0x04: /* NOP          |   zeropage   | N- Z- C- I- D- V- | 3 */
+		cost(2)
+	case 0x24: /* BIT oper     |   zeropage   | N+ Z+ C- I- D- V+ | 3 */
+		bit(zread(fetch()))
+	case 0x44: /* NOP          |   zeropage   | N- Z- C- I- D- V- | 3 */
+		cost(2)
+	case 0x64: /* NOP          |   zeropage   | N- Z- C- I- D- V- | 3 */
+		cost(2)
+	case 0x84: /* STY oper     |   zeropage   | N- Z- C- I- D- V- | 3 */
+		zwrite(fetch(), cpu.y)
+	case 0xA4: /* LDY oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setY(zread(fetch()))
+	case 0xC4: /* CPY oper     |   zeropage   | N+ Z+ C+ I- D- V- | 3 */
+		cmp(zread(fetch()), cpu.y)
+	case 0xE4: /* CPX oper     |   zeropage   | N+ Z+ C+ I- D- V- | 3 */
+		cmp(zread(fetch()), cpu.x)
 
-	op[0x02 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x22 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x42 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x62 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x82 /* NOP | 2 */] = func() { cost(1) }
-	op[0xA2 /* LDX | 2 */] = func() { setX(fetch()) }
-	op[0xC2 /* NOP | 2 */] = func() { cost(1) }
-	op[0xE2 /* NOP | 2 */] = func() { cost(1) }
+	case 0x05: /* ORA oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setA(cpu.a | zread(fetch()))
+	case 0x25: /* AND oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setA(cpu.a & zread(fetch()))
+	case 0x45: /* EOR oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setA(cpu.a ^ zread(fetch()))
+	case 0x65: /* ADC oper     |   zeropage   | N+ Z+ C+ I- D- V+ | 3 */
+		setA(adc(zread(fetch())))
+	case 0x85: /* STA oper     |   zeropage   | N- Z- C- I- D- V- | 3 */
+		zwrite(fetch(), cpu.a)
+	case 0xA5: /* LDA oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setA(zread(fetch()))
+	case 0xC5: /* CMP oper     |   zeropage   | N+ Z+ C+ I- D- V- | 3 */
+		cmp(zread(fetch()), cpu.a)
+	case 0xE5: /* SBC oper     |   zeropage   | N+ Z+ C+ I- D- V+ | 3 */
+		setA(sbc(zread(fetch())))
 
-	op[0x04 /* NOP | 3 */] = func() { cost(2) }
-	op[0x24 /* BIT | 3 */] = func() { bit(zread(fetch())) }
-	op[0x44 /* NOP | 3 */] = func() { cost(2) }
-	op[0x64 /* NOP | 3 */] = func() { cost(2) }
-	op[0x84 /* STY | 3 */] = func() { zwrite(fetch(), cpu.y) }
-	op[0xA4 /* LDY | 3 */] = func() { setY(zread(fetch())) }
-	op[0xC4 /* CPY | 3 */] = func() { cmp(zread(fetch()), cpu.y) }
-	op[0xE4 /* CPX | 3 */] = func() { cmp(zread(fetch()), cpu.x) }
+	case 0x06: /* ASL oper     |   zeropage   | N+ Z+ C+ I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, asl(zread(b)))
+		cost(1)
+	case 0x26: /* ROL oper     |   zeropage   | N+ Z+ C+ I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, rol(zread(b)))
+		cost(1)
+	case 0x46: /* LSR oper     |   zeropage   | N0 Z+ C+ I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, lsr(zread(b)))
+		cost(1)
+	case 0x66: /* ROR oper     |   zeropage   | N+ Z+ C+ I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, ror(zread(b)))
+		cost(1)
+	case 0x86: /* STX oper     |   zeropage   | N- Z- C- I- D- V- | 3 */
+		zwrite(fetch(), cpu.x)
+	case 0xA6: /* LDX oper     |   zeropage   | N+ Z+ C- I- D- V- | 3 */
+		setX(zread(fetch()))
+	case 0xC6: /* DEC oper     |   zeropage   | N+ Z+ C- I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, setNZ(zread(b)-1))
+		cost(1)
+	case 0xE6: /* INC oper     |   zeropage   | N+ Z+ C- I- D- V- | 5 */
+		b := fetch()
+		zwrite(b, setNZ(zread(b)+1))
+		cost(1)
 
-	op[0x05 /* ORA | 3 */] = func() { setA(cpu.a | zread(fetch())) }
-	op[0x25 /* AND | 3 */] = func() { setA(cpu.a & zread(fetch())) }
-	op[0x45 /* EOR | 3 */] = func() { setA(cpu.a ^ zread(fetch())) }
-	op[0x65 /* ADC | 3 */] = func() { setA(adc(zread(fetch()))) }
-	op[0x85 /* STA | 3 */] = func() { zwrite(fetch(), cpu.a) }
-	op[0xA5 /* LDA | 3 */] = func() { setA(zread(fetch())) }
-	op[0xC5 /* CMP | 3 */] = func() { cmp(zread(fetch()), cpu.a) }
-	op[0xE5 /* SBC | 3 */] = func() { setA(sbc(zread(fetch()))) }
+	case 0x08: /* PHP          |   implied    | N- Z- C- I- D- V- | 3 */
+		php()
+		cost(1)
+	case 0x28: /* PLP          |   implied    |    from stack     | 4 */
+		plp()
+		cost(2)
+	case 0x48: /* PHA          |   implied    | N- Z- C- I- D- V- | 3 */
+		push(cpu.a)
+		cost(1)
+	case 0x68: /* PLA          |   implied    | N+ Z+ C- I- D- V- | 4 */
+		setA(pop())
+		cost(2)
+	case 0x88: /* DEY          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setY(cpu.y - 1)
+		cost(1)
+	case 0xA8: /* TAY          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setY(cpu.a)
+		cost(1)
+	case 0xC8: /* INY          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setY(cpu.y + 1)
+		cost(1)
+	case 0xE8: /* INX          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setX(cpu.x + 1)
+		cost(1)
 
-	op[0x06 /* ASL | 5 */] = func() { b := fetch(); zwrite(b, asl(zread(b))); cost(1) }
-	op[0x26 /* ROL | 5 */] = func() { b := fetch(); zwrite(b, rol(zread(b))); cost(1) }
-	op[0x46 /* LSR | 5 */] = func() { b := fetch(); zwrite(b, lsr(zread(b))); cost(1) }
-	op[0x66 /* ROR | 5 */] = func() { b := fetch(); zwrite(b, ror(zread(b))); cost(1) }
-	op[0x86 /* STX | 3 */] = func() { zwrite(fetch(), cpu.x) }
-	op[0xA6 /* LDX | 3 */] = func() { setX(zread(fetch())) }
-	op[0xC6 /* DEC | 5 */] = func() { b := fetch(); zwrite(b, setNZ(zread(b)-1)); cost(1) }
-	op[0xE6 /* INC | 5 */] = func() { b := fetch(); zwrite(b, setNZ(zread(b)+1)); cost(1) }
+	case 0x09: /* ORA #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setA(cpu.a | fetch())
+	case 0x29: /* AND #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setA(cpu.a & fetch())
+	case 0x49: /* EOR #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setA(cpu.a ^ fetch())
+	case 0x69: /* ADC #oper    |  immediate   | N+ Z+ C+ I- D- V+ | 2 */
+		setA(adc(fetch()))
+	case 0x89: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0xA9: /* LDA #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
+		setA(fetch())
+	case 0xC9: /* CMP #oper    |  immediate   | N+ Z+ C+ I- D- V- | 2 */
+		cmp(fetch(), cpu.a)
+	case 0xE9: /* SBC #oper    |  immediate   | N+ Z+ C+ I- D- V+ | 2 */
+		setA(sbc(fetch()))
 
-	op[0x08 /* PHP | 3 */] = func() { php(); cost(1) }
-	op[0x28 /* PLP | 4 */] = func() { plp(); cost(2) }
-	op[0x48 /* PHA | 3 */] = func() { push(cpu.a); cost(1) }
-	op[0x68 /* PLA | 4 */] = func() { setA(pop()); cost(2) }
-	op[0x88 /* DEY | 2 */] = func() { setY(cpu.y - 1); cost(1) }
-	op[0xA8 /* TAY | 2 */] = func() { setY(cpu.a); cost(1) }
-	op[0xC8 /* INY | 2 */] = func() { setY(cpu.y + 1); cost(1) }
-	op[0xE8 /* INX | 2 */] = func() { setX(cpu.x + 1); cost(1) }
+	case 0x0A: /* ASL A        | accumulator  | N+ Z+ C+ I- D- V- | 2 */
+		setA(asl(cpu.a))
+		cost(1)
+	case 0x2A: /* ROL A        | accumulator  | N+ Z+ C+ I- D- V- | 2 */
+		setA(rol(cpu.a))
+		cost(1)
+	case 0x4A: /* LSR A        | accumulator  | N0 Z+ C+ I- D- V- | 2 */
+		setA(lsr(cpu.a))
+		cost(1)
+	case 0x6A: /* ROR A        | accumulator  | N+ Z+ C+ I- D- V- | 2 */
+		setA(ror(cpu.a))
+		cost(1)
+	case 0x8A: /* TXA          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setA(cpu.x)
+		cost(1)
+	case 0xAA: /* TAX          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setX(cpu.a)
+		cost(1)
+	case 0xCA: /* DEX          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setX(cpu.x - 1)
+		cost(1)
+	case 0xEA: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
 
-	op[0x09 /* ORA | 2 */] = func() { setA(cpu.a | fetch()) }
-	op[0x29 /* AND | 2 */] = func() { setA(cpu.a & fetch()) }
-	op[0x49 /* EOR | 2 */] = func() { setA(cpu.a ^ fetch()) }
-	op[0x69 /* ADC | 2 */] = func() { setA(adc(fetch())) }
-	op[0x89 /* NOP | 2 */] = func() { cost(1) }
-	op[0xA9 /* LDA | 2 */] = func() { setA(fetch()) }
-	op[0xC9 /* CMP | 2 */] = func() { cmp(fetch(), cpu.a) }
-	op[0xE9 /* SBC | 2 */] = func() { setA(sbc(fetch())) }
+	case 0x0C: /* NOP          |   absolute   | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0x2C: /* BIT oper     |   absolute   | N+ Z+ C- I- D- V+ | 4 */
+		bit(read(abs()))
+	case 0x4C: /* JMP oper     |   absolute   | N- Z- C- I- D- V- | 3 */
+		setPC(abs())
+	case 0x6C: /* JMP (oper)   |   indirect   | N- Z- C- I- D- V- | 5 */
+		l, h := abs()
+		lo := read(l, h)
+		setPC(lo, read(l+1, h))
+	case 0x8C: /* STY oper     |   absolute   | N- Z- C- I- D- V- | 4 */
+		write(fetch(), fetch(), cpu.y)
+	case 0xAC: /* LDY oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setY(read(abs()))
+	case 0xCC: /* CPY oper     |   absolute   | N+ Z+ C+ I- D- V- | 4 */
+		cmp(read(abs()), cpu.y)
+	case 0xEC: /* CPX oper     |   absolute   | N+ Z+ C+ I- D- V- | 4 */
+		cmp(read(abs()), cpu.x)
 
-	op[0x0A /* ASL | 2 */] = func() { setA(asl(cpu.a)); cost(1) }
-	op[0x2A /* ROL | 2 */] = func() { setA(rol(cpu.a)); cost(1) }
-	op[0x4A /* LSR | 2 */] = func() { setA(lsr(cpu.a)); cost(1) }
-	op[0x6A /* ROR | 2 */] = func() { setA(ror(cpu.a)); cost(1) }
-	op[0x8A /* TXA | 2 */] = func() { setA(cpu.x); cost(1) }
-	op[0xAA /* TAX | 2 */] = func() { setX(cpu.a); cost(1) }
-	op[0xCA /* DEX | 2 */] = func() { setX(cpu.x - 1); cost(1) }
-	op[0xEA /* NOP | 2 */] = func() { cost(1) }
+	case 0x0D: /* ORA oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a | read(abs()))
+	case 0x2D: /* AND oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a & read(abs()))
+	case 0x4D: /* EOR oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a ^ read(abs()))
+	case 0x6D: /* ADC oper     |   absolute   | N+ Z+ C+ I- D- V+ | 4 */
+		setA(adc(read(abs())))
+	case 0x8D: /* STA oper     |   absolute   | N- Z- C- I- D- V- | 4 */
+		write(fetch(), fetch(), cpu.a)
+	case 0xAD: /* LDA oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setA(read(abs()))
+	case 0xCD: /* CMP oper     |   absolute   | N+ Z+ C+ I- D- V- | 4 */
+		cmp(read(abs()), cpu.a)
+	case 0xED: /* SBC oper     |   absolute   | N+ Z+ C+ I- D- V+ | 4 */
+		setA(sbc(read(abs())))
 
-	op[0x0C /* NOP | 4 */] = func() { cost(3) }
-	op[0x2C /* BIT | 4 */] = func() { bit(read(abs())) }
-	op[0x4C /* JMP | 3 */] = func() { setPC(abs()) }
-	op[0x6C /* JMP | 5 */] = func() { l, h := abs(); lo := read(l, h); setPC(lo, read(l+1, h)) }
-	op[0x8C /* STY | 4 */] = func() { write(fetch(), fetch(), cpu.y) }
-	op[0xAC /* LDY | 4 */] = func() { setY(read(abs())) }
-	op[0xCC /* CPY | 4 */] = func() { cmp(read(abs()), cpu.y) }
-	op[0xEC /* CPX | 4 */] = func() { cmp(read(abs()), cpu.x) }
+	case 0x0E: /* ASL oper     |   absolute   | N+ Z+ C+ I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, asl(b))
+		cost(1)
+	case 0x2E: /* ROL oper     |   absolute   | N+ Z+ C+ I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, rol(b))
+		cost(1)
+	case 0x4E: /* LSR oper     |   absolute   | N0 Z+ C+ I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, lsr(b))
+		cost(1)
+	case 0x6E: /* ROR oper     |   absolute   | N+ Z+ C+ I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, ror(b))
+		cost(1)
+	case 0x8E: /* STX oper     |   absolute   | N- Z- C- I- D- V- | 4 */
+		write(fetch(), fetch(), cpu.x)
+	case 0xAE: /* LDX oper     |   absolute   | N+ Z+ C- I- D- V- | 4 */
+		setX(read(abs()))
+	case 0xCE: /* DEC oper     |   absolute   | N+ Z+ C- I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, setNZ(b-1))
+		cost(1)
+	case 0xEE: /* INC oper     |   absolute   | N+ Z+ C- I- D- V- | 6 */
+		l, h := abs()
+		b := read(l, h)
+		write(l, h, setNZ(b+1))
+		cost(1)
 
-	op[0x0D /* ORA | 4 */] = func() { setA(cpu.a | read(abs())) }
-	op[0x2D /* AND | 4 */] = func() { setA(cpu.a & read(abs())) }
-	op[0x4D /* EOR | 4 */] = func() { setA(cpu.a ^ read(abs())) }
-	op[0x6D /* ADC | 4 */] = func() { setA(adc(read(abs()))) }
-	op[0x8D /* STA | 4 */] = func() { write(fetch(), fetch(), cpu.a) }
-	op[0xAD /* LDA | 4 */] = func() { setA(read(abs())) }
-	op[0xCD /* CMP | 4 */] = func() { cmp(read(abs()), cpu.a) }
-	op[0xED /* SBC | 4 */] = func() { setA(sbc(read(abs()))) }
+	case 0x10: /* BPL oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(!hasF(flagN))
+	case 0x30: /* BMI oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(hasF(flagN))
+	case 0x50: /* BVC oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(!hasF(flagV))
+	case 0x70: /* BVS oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(hasF(flagV))
+	case 0x90: /* BCC oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(!hasF(flagC))
+	case 0xB0: /* BCS oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(hasF(flagC))
+	case 0xD0: /* BNE oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(!hasF(flagZ))
+	case 0xF0: /* BEQ oper     |   relative   | N- Z- C- I- D- V- | 2** */
+		branch(hasF(flagZ))
 
-	op[0x0E /* ASL | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, asl(b)); cost(1) }
-	op[0x2E /* ROL | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, rol(b)); cost(1) }
-	op[0x4E /* LSR | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, lsr(b)); cost(1) }
-	op[0x6E /* ROR | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, ror(b)); cost(1) }
-	op[0x8E /* STX | 4 */] = func() { write(fetch(), fetch(), cpu.x) }
-	op[0xAE /* LDX | 4 */] = func() { setX(read(abs())) }
-	op[0xCE /* DEC | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, setNZ(b-1)); cost(1) }
-	op[0xEE /* INC | 6 */] = func() { l, h := abs(); b := read(l, h); write(l, h, setNZ(b+1)); cost(1) }
+	case 0x11: /* ORA (oper),Y | (indirect),Y | N+ Z+ C- I- D- V- | 5* */
+		l, h, c := indY()
+		setA(cpu.a | read(l, h))
+		cost(c)
+	case 0x31: /* AND (oper),Y | (indirect),Y | N+ Z+ C- I- D- V- | 5* */
+		l, h, c := indY()
+		setA(cpu.a & read(l, h))
+		cost(c)
+	case 0x51: /* EOR (oper),Y | (indirect),Y | N+ Z+ C- I- D- V- | 5* */
+		l, h, c := indY()
+		setA(cpu.a ^ read(l, h))
+		cost(c)
+	case 0x71: /* ADC (oper),Y | (indirect),Y | N+ Z+ C+ I- D- V+ | 5* */
+		l, h, c := indY()
+		setA(adc(read(l, h)))
+		cost(c)
+	case 0x91: /* STA (oper),Y | (indirect),Y | N- Z- C- I- D- V- | 6 */
+		l, h, _ := indY()
+		write(l, h, cpu.a)
+		cost(1)
+	case 0xB1: /* LDA (oper),Y | (indirect),Y | N+ Z+ C- I- D- V- | 5* */
+		l, h, c := indY()
+		setA(read(l, h))
+		cost(c)
+	case 0xD1: /* CMP (oper),Y | (indirect),Y | N+ Z+ C+ I- D- V- | 5* */
+		l, h, c := indY()
+		cmp(read(l, h), cpu.a)
+		cost(c)
+	case 0xF1: /* SBC (oper),Y | (indirect),Y | N+ Z+ C+ I- D- V+ | 5* */
+		l, h, c := indY()
+		setA(sbc(read(l, h)))
+		cost(c)
 
-	op[0x10 /* BPL | 2** */] = func() { branch(!hasF(flagN)) }
-	op[0x30 /* BMI | 2** */] = func() { branch(hasF(flagN)) }
-	op[0x50 /* BVC | 2** */] = func() { branch(!hasF(flagV)) }
-	op[0x70 /* BVS | 2** */] = func() { branch(hasF(flagV)) }
-	op[0x90 /* BCC | 2** */] = func() { branch(!hasF(flagC)) }
-	op[0xB0 /* BCS | 2** */] = func() { branch(hasF(flagC)) }
-	op[0xD0 /* BNE | 2** */] = func() { branch(!hasF(flagZ)) }
-	op[0xF0 /* BEQ | 2** */] = func() { branch(hasF(flagZ)) }
+	case 0x12: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x32: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x52: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x72: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0x92: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0xB2: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0xD2: /* HLT          |              |                   | 1 */
+		cpu.halted = true
+	case 0xF2: /* HLT          |              |                   | 1 */
+		cpu.halted = true
 
-	op[0x11 /* ORA | 5* */] = func() { l, h, c := indY(); setA(cpu.a | read(l, h)); cost(c) }
-	op[0x31 /* AND | 5* */] = func() { l, h, c := indY(); setA(cpu.a & read(l, h)); cost(c) }
-	op[0x51 /* EOR | 5* */] = func() { l, h, c := indY(); setA(cpu.a ^ read(l, h)); cost(c) }
-	op[0x71 /* ADC | 5* */] = func() { l, h, c := indY(); setA(adc(read(l, h))); cost(c) }
-	op[0x91 /* STA | 6  */] = func() { l, h, _ := indY(); write(l, h, cpu.a); cost(1) }
-	op[0xB1 /* LDA | 5* */] = func() { l, h, c := indY(); setA(read(l, h)); cost(c) }
-	op[0xD1 /* CMP | 5* */] = func() { l, h, c := indY(); cmp(read(l, h), cpu.a); cost(c) }
-	op[0xF1 /* SBC | 5* */] = func() { l, h, c := indY(); setA(sbc(read(l, h))); cost(c) }
+	case 0x14: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0x34: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0x54: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0x74: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0x94: /* STY oper,X   |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		zwrite(fetch()+cpu.x, cpu.y)
+		cost(1)
+	case 0xB4: /* LDY oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 4 */
+		setY(zread(fetch() + cpu.x))
+		cost(1)
+	case 0xD4: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
+	case 0xF4: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		cost(3)
 
-	op[0x12 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x32 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x52 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x72 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0x92 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0xB2 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0xD2 /* HLT | 1 */] = func() { cpu.halted = true }
-	op[0xF2 /* HLT | 1 */] = func() { cpu.halted = true }
+	case 0x15: /* ORA oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a | zread(fetch()+cpu.x))
+		cost(1)
+	case 0x35: /* AND oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a & zread(fetch()+cpu.x))
+		cost(1)
+	case 0x55: /* EOR oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 4 */
+		setA(cpu.a ^ zread(fetch()+cpu.x))
+		cost(1)
+	case 0x75: /* ADC oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V+ | 4 */
+		setA(adc(zread(fetch() + cpu.x)))
+		cost(1)
+	case 0x95: /* STA oper,X   |  zeropage,X  | N- Z- C- I- D- V- | 4 */
+		zwrite(fetch()+cpu.x, cpu.a)
+		cost(1)
+	case 0xB5: /* LDA oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 4 */
+		setA(zread(fetch() + cpu.x))
+		cost(1)
+	case 0xD5: /* CMP oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V- | 4 */
+		cmp(zread(fetch()+cpu.x), cpu.a)
+		cost(1)
+	case 0xF5: /* SBC oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V+ | 4 */
+		setA(sbc(zread(fetch() + cpu.x)))
+		cost(1)
 
-	op[0x14 /* NOP | 4 */] = func() { cost(3) }
-	op[0x34 /* NOP | 4 */] = func() { cost(3) }
-	op[0x54 /* NOP | 4 */] = func() { cost(3) }
-	op[0x74 /* NOP | 4 */] = func() { cost(3) }
-	op[0x94 /* STY | 4 */] = func() { zwrite(fetch()+cpu.x, cpu.y); cost(1) }
-	op[0xB4 /* LDY | 4 */] = func() { setY(zread(fetch() + cpu.x)); cost(1) }
-	op[0xD4 /* NOP | 4 */] = func() { cost(3) }
-	op[0xF4 /* NOP | 4 */] = func() { cost(3) }
+	case 0x16: /* ASL oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, asl(zread(l)))
+		cost(2)
+	case 0x36: /* ROL oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, rol(zread(l)))
+		cost(2)
+	case 0x56: /* LSR oper,X   |  zeropage,X  | N0 Z+ C+ I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, lsr(zread(l)))
+		cost(2)
+	case 0x76: /* ROR oper,X   |  zeropage,X  | N+ Z+ C+ I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, ror(zread(l)))
+		cost(2)
+	case 0x96: /* STX oper,Y   |  zeropage,Y  | N- Z- C- I- D- V- | 4 */
+		zwrite(fetch()+cpu.y, cpu.x)
+		cost(1)
+	case 0xB6: /* LDX oper,Y   |  zeropage,Y  | N+ Z+ C- I- D- V- | 4 */
+		setX(zread(fetch() + cpu.y))
+		cost(1)
+	case 0xD6: /* DEC oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, setNZ(zread(l)-1))
+		cost(2)
+	case 0xF6: /* INC oper,X   |  zeropage,X  | N+ Z+ C- I- D- V- | 6 */
+		l := fetch() + cpu.x
+		zwrite(l, setNZ(zread(l)+1))
+		cost(2)
 
-	op[0x15 /* ORA | 4 */] = func() { setA(cpu.a | zread(fetch()+cpu.x)); cost(1) }
-	op[0x35 /* AND | 4 */] = func() { setA(cpu.a & zread(fetch()+cpu.x)); cost(1) }
-	op[0x55 /* EOR | 4 */] = func() { setA(cpu.a ^ zread(fetch()+cpu.x)); cost(1) }
-	op[0x75 /* ADC | 4 */] = func() { setA(adc(zread(fetch() + cpu.x))); cost(1) }
-	op[0x95 /* STA | 4 */] = func() { zwrite(fetch()+cpu.x, cpu.a); cost(1) }
-	op[0xB5 /* LDA | 4 */] = func() { setA(zread(fetch() + cpu.x)); cost(1) }
-	op[0xD5 /* CMP | 4 */] = func() { cmp(zread(fetch()+cpu.x), cpu.a); cost(1) }
-	op[0xF5 /* SBC | 4 */] = func() { setA(sbc(zread(fetch() + cpu.x))); cost(1) }
+	case 0x18: /* CLC          |   implied    | N- Z- C0 I- D- V- | 2 */
+		setC(false)
+		cost(1)
+	case 0x38: /* SEC          |   implied    | N- Z- C1 I- D- V- | 2 */
+		setC(true)
+		cost(1)
+	case 0x58: /* CLI          |   implied    | N- Z- C- I0 D- V- | 2 */
+		setI(false)
+		cost(1)
+	case 0x78: /* SEI          |   implied    | N- Z- C- I1 D- V- | 2 */
+		setI(true)
+		cost(1)
+	case 0x98: /* TYA          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setA(cpu.y)
+		cost(1)
+	case 0xB8: /* CLV          |   implied    | N- Z- C- I- D- V0 | 2 */
+		setF(false, flagV)
+		cost(1)
+	case 0xD8: /* CLD          |   implied    | N- Z- C- I- D0 V- | 2 */
+		setF(false, flagD)
+		cost(1)
+	case 0xF8: /* SED          |   implied    | N- Z- C- I- D1 V- | 2 */
+		setF(true, flagD)
+		cost(1)
 
-	op[0x16 /* ASL | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, asl(zread(l))); cost(2) }
-	op[0x36 /* ROL | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, rol(zread(l))); cost(2) }
-	op[0x56 /* LSR | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, lsr(zread(l))); cost(2) }
-	op[0x76 /* ROR | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, ror(zread(l))); cost(2) }
-	op[0x96 /* STX | 4 */] = func() { zwrite(fetch()+cpu.y, cpu.x); cost(1) }
-	op[0xB6 /* LDX | 4 */] = func() { setX(zread(fetch() + cpu.y)); cost(1) }
-	op[0xD6 /* DEC | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, setNZ(zread(l)-1)); cost(2) }
-	op[0xF6 /* INC | 6 */] = func() { l := fetch() + cpu.x; zwrite(l, setNZ(zread(l)+1)); cost(2) }
+	case 0x19: /* ORA oper,Y   |  absolute,Y  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		setA(cpu.a | read(l, h))
+		cost(c)
+	case 0x39: /* AND oper,Y   |  absolute,Y  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		setA(cpu.a & read(l, h))
+		cost(c)
+	case 0x59: /* EOR oper,Y   |  absolute,Y  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		setA(cpu.a ^ read(l, h))
+		cost(c)
+	case 0x79: /* ADC oper,Y   |  absolute,Y  | N+ Z+ C+ I- D- V+ | 4* */
+		l, h, c := absN(cpu.y)
+		setA(adc(read(l, h)))
+		cost(c)
+	case 0x99: /* STA oper,Y   |  absolute,Y  | N- Z- C- I- D- V- | 5 */
+		l, h, _ := absN(cpu.y)
+		write(l, h, cpu.a)
+		cost(1)
+	case 0xB9: /* LDA oper,Y   |  absolute,Y  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		setA(read(l, h))
+		cost(c)
+	case 0xD9: /* CMP oper,Y   |  absolute,Y  | N+ Z+ C+ I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		cmp(read(l, h), cpu.a)
+		cost(c)
+	case 0xF9: /* SBC oper,Y   |  absolute,Y  | N+ Z+ C+ I- D- V+ | 4* */
+		l, h, c := absN(cpu.y)
+		setA(sbc(read(l, h)))
+		cost(c)
 
-	op[0x18 /* CLC | 2 */] = func() { setC(false); cost(1) }
-	op[0x38 /* SEC | 2 */] = func() { setC(true); cost(1) }
-	op[0x58 /* CLI | 2 */] = func() { setI(false); cost(1) }
-	op[0x78 /* SEI | 2 */] = func() { setI(true); cost(1) }
-	op[0x98 /* TYA | 2 */] = func() { setA(cpu.y); cost(1) }
-	op[0xB8 /* CLV | 2 */] = func() { setF(false, flagV); cost(1) }
-	op[0xD8 /* CLD | 2 */] = func() { setF(false, flagD); cost(1) }
-	op[0xF8 /* SED | 2 */] = func() { setF(true, flagD); cost(1) }
+	case 0x1A: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0x3A: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0x5A: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0x7A: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0x9A: /* TXS          |   implied    | N- Z- C- I- D- V- | 2 */
+		cpu.s = cpu.x
+		cost(1)
+	case 0xBA: /* TSX          |   implied    | N+ Z+ C- I- D- V- | 2 */
+		setX(cpu.s)
+		cost(1)
+	case 0xDA: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
+	case 0xFA: /* NOP          |   implied    | N- Z- C- I- D- V- | 2 */
+		cost(1)
 
-	op[0x19 /* ORA | 4* */] = func() { l, h, c := absN(cpu.y); setA(cpu.a | read(l, h)); cost(c) }
-	op[0x39 /* AND | 4* */] = func() { l, h, c := absN(cpu.y); setA(cpu.a & read(l, h)); cost(c) }
-	op[0x59 /* EOR | 4* */] = func() { l, h, c := absN(cpu.y); setA(cpu.a ^ read(l, h)); cost(c) }
-	op[0x79 /* ADC | 4* */] = func() { l, h, c := absN(cpu.y); setA(adc(read(l, h))); cost(c) }
-	op[0x99 /* STA | 5  */] = func() { l, h, _ := absN(cpu.y); write(l, h, cpu.a); cost(1) }
-	op[0xB9 /* LDA | 4* */] = func() { l, h, c := absN(cpu.y); setA(read(l, h)); cost(c) }
-	op[0xD9 /* CMP | 4* */] = func() { l, h, c := absN(cpu.y); cmp(read(l, h), cpu.a); cost(c) }
-	op[0xF9 /* SBC | 4* */] = func() { l, h, c := absN(cpu.y); setA(sbc(read(l, h))); cost(c) }
+	case 0x1C: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
+	case 0x3C: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
+	case 0x5C: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
+	case 0x7C: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
+	case 0xBC: /* LDY oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		setY(read(l, h))
+		cost(c)
+	case 0xDC: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
+	case 0xFC: /* NOP          |  absolute,X  | N- Z- C- I- D- V- | 4* */
+		cost(3)
 
-	op[0x1A /* NOP | 2 */] = func() { cost(1) }
-	op[0x3A /* NOP | 2 */] = func() { cost(1) }
-	op[0x5A /* NOP | 2 */] = func() { cost(1) }
-	op[0x7A /* NOP | 2 */] = func() { cost(1) }
-	op[0x9A /* TXS | 2 */] = func() { cpu.s = cpu.x; cost(1) }
-	op[0xBA /* TSX | 2 */] = func() { setX(cpu.s); cost(1) }
-	op[0xDA /* NOP | 2 */] = func() { cost(1) }
-	op[0xFA /* NOP | 2 */] = func() { cost(1) }
+	case 0x1D: /* ORA oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		setA(cpu.a | read(l, h))
+		cost(c)
+	case 0x3D: /* AND oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		setA(cpu.a & read(l, h))
+		cost(c)
+	case 0x5D: /* EOR oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		setA(cpu.a ^ read(l, h))
+		cost(c)
+	case 0x7D: /* ADC oper,X   |  absolute,X  | N+ Z+ C+ I- D- V+ | 4* */
+		l, h, c := absN(cpu.x)
+		setA(adc(read(l, h)))
+		cost(c)
+	case 0x9D: /* STA oper,X   |  absolute,X  | N- Z- C- I- D- V- | 5 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, cpu.a)
+		cost(1)
+	case 0xBD: /* LDA oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		setA(read(l, h))
+		cost(c)
+	case 0xDD: /* CMP oper,X   |  absolute,X  | N+ Z+ C+ I- D- V- | 4* */
+		l, h, c := absN(cpu.x)
+		cmp(read(l, h), cpu.a)
+		cost(c)
+	case 0xFD: /* SBC oper,X   |  absolute,X  | N+ Z+ C+ I- D- V+ | 4* */
+		l, h, c := absN(cpu.x)
+		setA(sbc(read(l, h)))
+		cost(c)
 
-	op[0x1C /* NOP | 4* */] = func() { cost(3) }
-	op[0x3C /* NOP | 4* */] = func() { cost(3) }
-	op[0x5C /* NOP | 4* */] = func() { cost(3) }
-	op[0x7C /* NOP | 4* */] = func() { cost(3) }
-	op[0x9C /*     | 1  */] = nil
-	op[0xBC /* LDY | 4* */] = func() { l, h, c := absN(cpu.x); setY(read(l, h)); cost(c) }
-	op[0xDC /* NOP | 4* */] = func() { cost(3) }
-	op[0xFC /* NOP | 4* */] = func() { cost(3) }
-
-	op[0x1D /* ORA | 4* */] = func() { l, h, c := absN(cpu.x); setA(cpu.a | read(l, h)); cost(c) }
-	op[0x3D /* AND | 4* */] = func() { l, h, c := absN(cpu.x); setA(cpu.a & read(l, h)); cost(c) }
-	op[0x5D /* EOR | 4* */] = func() { l, h, c := absN(cpu.x); setA(cpu.a ^ read(l, h)); cost(c) }
-	op[0x7D /* ADC | 4* */] = func() { l, h, c := absN(cpu.x); setA(adc(read(l, h))); cost(c) }
-	op[0x9D /* STA | 5  */] = func() { l, h, _ := absN(cpu.x); write(l, h, cpu.a); cost(1) }
-	op[0xBD /* LDA | 4* */] = func() { l, h, c := absN(cpu.x); setA(read(l, h)); cost(c) }
-	op[0xDD /* CMP | 4* */] = func() { l, h, c := absN(cpu.x); cmp(read(l, h), cpu.a); cost(c) }
-	op[0xFD /* SBC | 4* */] = func() { l, h, c := absN(cpu.x); setA(sbc(read(l, h))); cost(c) }
-
-	op[0x1E /* ASL | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, asl(read(l, h))); cost(2) }
-	op[0x3E /* ROL | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, rol(read(l, h))); cost(2) }
-	op[0x5E /* LSR | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, lsr(read(l, h))); cost(2) }
-	op[0x7E /* ROR | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, ror(read(l, h))); cost(2) }
-	op[0x9E /*     | 1  */] = nil
-	op[0xBE /* LDX | 4* */] = func() { l, h, c := absN(cpu.y); setX(read(l, h)); cost(c) }
-	op[0xDE /* DEC | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, setNZ(read(l, h)-1)); cost(2) }
-	op[0xFE /* INC | 7  */] = func() { l, h, _ := absN(cpu.x); write(l, h, setNZ(read(l, h)+1)); cost(2) }
-
-	// ---
-
-	code := fetch() /* cost 1 */
-	if op[code] == nil {
-		return fmt.Errorf("m6502: invalid op code: %02X%02X: %02X", pch, pcl, code)
+	case 0x1E: /* ASL oper,X   |  absolute,X  | N+ Z+ C+ I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, asl(read(l, h)))
+		cost(2)
+	case 0x3E: /* ROL oper,X   |  absolute,X  | N+ Z+ C+ I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, rol(read(l, h)))
+		cost(2)
+	case 0x5E: /* LSR oper,X   |  absolute,X  | N0 Z+ C+ I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, lsr(read(l, h)))
+		cost(2)
+	case 0x7E: /* ROR oper,X   |  absolute,X  | N+ Z+ C+ I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, ror(read(l, h)))
+		cost(2)
+	case 0xBE: /* LDX oper,Y   |  absolute,Y  | N+ Z+ C- I- D- V- | 4* */
+		l, h, c := absN(cpu.y)
+		setX(read(l, h))
+		cost(c)
+	case 0xDE: /* DEC oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, setNZ(read(l, h)-1))
+		cost(2)
+	case 0xFE: /* INC oper,X   |  absolute,X  | N+ Z+ C- I- D- V- | 7 */
+		l, h, _ := absN(cpu.x)
+		write(l, h, setNZ(read(l, h)+1))
+		cost(2)
+	default:
+		return fmt.Errorf("m6502: invalid op code: %02X%02X: %02X", pch, pcl, read(pcl, pch))
 	}
-	if op[code](); cpu.halted {
+
+	if cpu.halted {
 		return ErrHalted
 	}
 	return nil

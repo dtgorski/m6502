@@ -4,6 +4,8 @@ package m6502
 
 import (
 	"errors"
+	"io"
+	"os"
 	"runtime"
 	"testing"
 )
@@ -2125,5 +2127,35 @@ func TestPanic(t *testing.T) {
 	}
 	if "foo" != err.Error() {
 		t.Logf("unexpected, got *%s*", err)
+	}
+}
+
+func BenchmarkCPU(b *testing.B) {
+	bus := &memoryBus{}
+	cpu := New(bus)
+
+	file, err := os.Open("./dev/6502_functional_test.bin")
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = io.ReadFull(file, bus.mem[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+	cpu.PC(0x00, 0x04)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for {
+			_, err = cpu.Step()
+			if err != nil {
+				b.Fatal(err)
+			}
+			if cpu.PCH() == 0x34 && cpu.PCL() == 0x69 {
+				break
+			}
+		}
 	}
 }
