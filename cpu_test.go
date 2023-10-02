@@ -248,10 +248,10 @@ func TestCPU(t *testing.T) {
 
 	// ---
 
-	tests[0x02 /* HLT */] = []test{{func() {}, "HLT", []byte{0x02}, 0, func() { EX(cpu.halted) }}}
-	tests[0x22 /* HLT */] = []test{{func() {}, "HLT", []byte{0x22}, 0, func() { EX(cpu.halted) }}}
-	tests[0x42 /* HLT */] = []test{{func() {}, "HLT", []byte{0x42}, 0, func() { EX(cpu.halted) }}}
-	tests[0x62 /* HLT */] = []test{{func() {}, "HLT", []byte{0x62}, 0, func() { EX(cpu.halted) }}}
+	tests[0x02 /* HLT */] = []test{{func() {}, "HLT", []byte{0x02}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x22 /* HLT */] = []test{{func() {}, "HLT", []byte{0x22}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x42 /* HLT */] = []test{{func() {}, "HLT", []byte{0x42}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x62 /* HLT */] = []test{{func() {}, "HLT", []byte{0x62}, 0, func() { EX(cpu.error == ErrHalted) }}}
 
 	tests[0x82 /* NOP | immediate | N- Z- C- I- D- V- | 2 */] = []test{
 		{
@@ -1305,14 +1305,14 @@ func TestCPU(t *testing.T) {
 
 	// ---
 
-	tests[0x12 /* HLT */] = []test{{func() {}, "HLT", []byte{0x12}, 0, func() { EX(cpu.halted) }}}
-	tests[0x32 /* HLT */] = []test{{func() {}, "HLT", []byte{0x32}, 0, func() { EX(cpu.halted) }}}
-	tests[0x52 /* HLT */] = []test{{func() {}, "HLT", []byte{0x52}, 0, func() { EX(cpu.halted) }}}
-	tests[0x72 /* HLT */] = []test{{func() {}, "HLT", []byte{0x72}, 0, func() { EX(cpu.halted) }}}
-	tests[0x92 /* HLT */] = []test{{func() {}, "HLT", []byte{0x92}, 0, func() { EX(cpu.halted) }}}
-	tests[0xB2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xB2}, 0, func() { EX(cpu.halted) }}}
-	tests[0xD2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xD2}, 0, func() { EX(cpu.halted) }}}
-	tests[0xF2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xF2}, 0, func() { EX(cpu.halted) }}}
+	tests[0x12 /* HLT */] = []test{{func() {}, "HLT", []byte{0x12}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x32 /* HLT */] = []test{{func() {}, "HLT", []byte{0x32}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x52 /* HLT */] = []test{{func() {}, "HLT", []byte{0x52}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x72 /* HLT */] = []test{{func() {}, "HLT", []byte{0x72}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0x92 /* HLT */] = []test{{func() {}, "HLT", []byte{0x92}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0xB2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xB2}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0xD2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xD2}, 0, func() { EX(cpu.error == ErrHalted) }}}
+	tests[0xF2 /* HLT */] = []test{{func() {}, "HLT", []byte{0xF2}, 0, func() { EX(cpu.error == ErrHalted) }}}
 
 	// ---
 

@@ -37,7 +37,7 @@ type (
 		pch byte // Program counter high
 
 		cycles uint
-		halted bool
+		error  error
 	}
 
 	flag byte
@@ -120,8 +120,8 @@ func (cpu *CPU) Reset() {
 	cpu.pch = cpu.bus.Read(0xFD, 0xFF)
 	flg := flag(0)
 	cpu.p = &flg
-	cpu.halted = false
 	cpu.cycles = 0
+	cpu.error = nil
 }
 
 // Step performs *one* instruction and returns the number of cycles, that the original
@@ -130,8 +130,8 @@ func (cpu *CPU) Reset() {
 // When the CPU is halted by an instruction, this function will immediately return
 // an ErrHalted error until a Reset().
 func (cpu *CPU) Step() (cycles uint, err error) {
-	if cpu.halted {
-		return 0, ErrHalted
+	if cpu.error != nil {
+		return 0, cpu.error
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -315,13 +315,13 @@ func (cpu *CPU) tick() error {
 		cost(1)
 
 	case 0x02: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x22: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x42: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x62: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x82: /* NOP          |  immediate   | N- Z- C- I- D- V- | 2 */
 		cost(1)
 	case 0xA2: /* LDX #oper    |  immediate   | N+ Z+ C- I- D- V- | 2 */
@@ -582,21 +582,21 @@ func (cpu *CPU) tick() error {
 		cost(c)
 
 	case 0x12: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x32: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x52: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x72: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0x92: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0xB2: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0xD2: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 	case 0xF2: /* HLT          |              |                   | 1 */
-		cpu.halted = true
+		cpu.error = ErrHalted
 
 	case 0x14: /* NOP          |  zeropage,X  | N- Z- C- I- D- V- | 4 */
 		cost(3)
@@ -831,11 +831,7 @@ func (cpu *CPU) tick() error {
 	default:
 		return fmt.Errorf("m6502: invalid op code: %02X%02X: %02X", pch, pcl, read(pcl, pch))
 	}
-
-	if cpu.halted {
-		return ErrHalted
-	}
-	return nil
+	return cpu.error
 }
 
 func (f *flag) set(cond bool, bit flag) *flag {

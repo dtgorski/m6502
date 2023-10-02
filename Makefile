@@ -30,7 +30,7 @@ sniff:                  # Checks format and runs linter (void on success)
 	@find . -type f -not -path "*/\.*" -name "*.go" | xargs -I{} gofmt -d {}
 	@go vet ./... || true
 	@>/dev/null which revive || (echo "Missing a linter, install with:  go install github.com/mgechev/revive" && false)
-	@revive -config .revive.toml ./...
+	@revive -config .revive.toml $(ARGS) ./...
 
 tidy:                   # Formats source files, cleans go.mod
 	@find . -type f -not -path "*/\.*" -name "*.go" | xargs -I{} gofmt -w {}
